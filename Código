@@ -1,0 +1,110 @@
+
+# Carga de librerias ------------------------------------------------------
+library(readr)
+
+library(randomForest)
+library(MASS)
+library(skimr)
+library(dplyr)
+# Carga de las bases de datos ---------------------------------------------
+
+Input1_clientes_estructura <- read_delim("C:/Users/karol/Desktop/Hackaton/Input1_clientes_estructura.csv", 
+                                         ";", escape_double = FALSE, trim_ws = TRUE)
+
+Input2_clientes_venta <- read_delim("C:/Users/karol/Desktop/Hackaton/Input2_clientes_venta.csv", 
+                                    ";", escape_double = FALSE, trim_ws = TRUE)
+
+Input3_clientes_test <- read_delim("C:/Users/karol/Desktop/Hackaton/Input3_clientes_test.csv", 
+                                   ";", escape_double = FALSE, trim_ws = TRUE)
+
+Input1_clientes_estructura<-data.frame(Input1_clientes_estructura)
+Input2_clientes_venta<-data.frame(Input2_clientes_venta)
+Input3_clientes_test<-data.frame(Input3_clientes_test)
+
+Input1_clientes_estructura[,1]<-as.factor(Input1_clientes_estructura[,1])
+Input1_clientes_estructura[,2]<-as.factor(Input1_clientes_estructura[,2])
+Input1_clientes_estructura[,3]<-as.factor(Input1_clientes_estructura[,3])
+Input1_clientes_estructura[,4]<-as.factor(Input1_clientes_estructura[,4])
+Input1_clientes_estructura[,5]<-as.factor(Input1_clientes_estructura[,5])
+Input1_clientes_estructura[,6]<-as.factor(Input1_clientes_estructura[,6])
+
+Input2_clientes_venta[,1]<-as.factor(Input2_clientes_venta[,1])
+Input2_clientes_venta[,2]<-as.factor(Input2_clientes_venta[,2])
+Input2_clientes_venta[,3]<-as.factor(Input2_clientes_venta[,3])
+Input2_clientes_venta[,4]<-as.factor(Input2_clientes_venta[,4])
+Input2_clientes_venta[,5]<-as.factor(Input2_clientes_venta[,5])
+Input2_clientes_venta[,6]<-as.factor(Input2_clientes_venta[,6])
+Input2_clientes_venta[,7]<-as.factor(Input2_clientes_venta[,7])
+
+datos<-merge(Input1_clientes_estructura,Input2_clientes_venta,by="Cliente")
+
+
+
+# Recodificacion de marca -------------------------------------------------
+
+datos<-mutate(datos,
+        Marca = case_when( 
+            Marca2 == "Marca_20" & Cupo2 == "Cupo_3" & CapacidadEnvase2=="CapacidadEnvase_9" ~ "Marca1",
+            Marca2 == "Marca_16" & Cupo2 == "Cupo_2" & CapacidadEnvase2=="CapacidadEnvase_10" ~ "Marca2",
+            Marca2 == "Marca_9" & Cupo2 == "Cupo_3" & CapacidadEnvase2=="CapacidadEnvase_12" ~ "Marca3",
+            Marca2 == "Marca_38" & Cupo2 == "Cupo_2" & CapacidadEnvase2=="CapacidadEnvase_10" ~ "Marca_Inno1",
+            Marca2 == "Marca_39" & Cupo2 == "Cupo_2" & CapacidadEnvase2=="CapacidadEnvase_10" ~ "Marca_Inno2",
+            TRUE ~ "Otra marca"
+        )
+)
+
+datos$Marca<-as.factor(datos$Marca)
+
+
+# Division de los datos  --------------------------------------------------
+
+prueba <- c(Input3_clientes_test$Cliente)
+prueba <- as.character(prueba)
+
+datos.prueba1 <- datos %>% filter(Cliente %in% c(prueba))
+datos_entrena<-  filter(datos, 
+                        !Cliente %in% 
+                            c(prueba))
+
+
+
+# Modelo random forest ----------------------------------------------------
+
+modelo.cerveza=randomForest(as.factor(Marca) ~ Gerencia2+SubCanal2+
+                                Categoria+Nevera+SegmentoPrecio2+
+                                 Cupo2+CapacidadEnvase2+Volumen+nr, 
+                            data = datos_entrena, ntree =30 , mtry=4, importance=TRUE)  
+
+
+
+# Predicciones ------------------------------------------------------------
+
+mitransformacion<-function(x,datos.prueba1,prueba){
+  resul<- datos.prueba1 %>% filter(Cliente %in% prueba[x])
+  return(resul)
+}
+
+prueba2<-1:9302
+datasetlist<-lapply(prueba2,function(x)mitransformacion(x,datos.prueba1,prueba))   
+
+prededir<-function(modelo,datasetlist,y){
+  predic<- predict(modelo,datasetlist[y])
+  return(predic)
+}
+
+predictores<-lapply(datasetlist, function(x){predict(modelo.cerveza,newdata=x)})
+probabilid<-lapply(predictores,function(x){prop.table(table(x))})
+resultados_final<-matrix(unlist(probabilid),nrow = 9302,ncol = 6,byrow = T)
+
+
+# Conversión de resultados ------------------------------------------------
+
+
+resultados_final<-round(resultados_final,3)
+resultados_final1<-data.frame(prueba,resultados_final[,-6])
+colnames(resultados_final1)<-c("Cliente","Marca_Inno1","Marca_Inno2","Marca1","Marca2","Marca3")
+Input3_clientes_test_1<-resultados_final1 %>% select(Cliente,Marca1,Marca2,Marca3,Marca_Inno1,Marca_Inno2)
+Input3_clientes_K_team<-write.table(Input3_clientes_test_1,"Input3_clientes_K_team.csv",sep=",")
+resul11<- datos.prueba1 %>% filter(Cliente %in% prueba[1])
+predict(modelo.cerveza,resul11,type = "response")
+prop.table(table(predict(modelo.cerveza,resul11,type = "response")))
