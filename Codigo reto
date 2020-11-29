@@ -76,7 +76,6 @@ modelo.cerveza=randomForest(as.factor(Marca) ~ Gerencia2+SubCanal2+
                             data = datos_entrena, ntree =30 , mtry=4, importance=TRUE)  
 
 
-
 # Predicciones ------------------------------------------------------------
 
 mitransformacion<-function(x,datos.prueba1,prueba){
